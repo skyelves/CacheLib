@@ -1,0 +1,15 @@
+diff --git a/cachelib/cachebench/cache/Cache-inl.h b/cachelib/cachebench/cache/Cache-inl.h
+index 1ead8f4..53bc167 100644
+--- a/cachelib/cachebench/cache/Cache-inl.h
++++ b/cachelib/cachebench/cache/Cache-inl.h
+@@ -94,6 +94,10 @@ Cache<Allocator>::Cache(const CacheConfig& config,
+ 
+   allocatorConfig_.setCacheSize(config_.cacheSizeMB * (MB));
+ 
++  allocatorConfig_.enableCachePersistence("/media/pmem0/matt/cachedir"); //replace with directory of choice
++
++  allocatorConfig_.usePosixForShm();
++
+   auto cleanupGuard = folly::makeGuard([&] {
+     if (!nvmCacheFilePath_.empty()) {
+       util::removePath(nvmCacheFilePath_);

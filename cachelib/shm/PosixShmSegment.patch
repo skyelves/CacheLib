@@ -1,0 +1,41 @@
+diff --git a/cachelib/shm/PosixShmSegment.cpp b/cachelib/shm/PosixShmSegment.cpp
+index 9126e1a..62c90f1 100644
+--- a/cachelib/shm/PosixShmSegment.cpp
++++ b/cachelib/shm/PosixShmSegment.cpp
+@@ -17,6 +17,7 @@
+ #include "cachelib/shm/PosixShmSegment.h"
+ 
+ #include <fcntl.h>
++#include <unistd.h>
+ #include <folly/logging/xlog.h>
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+@@ -29,11 +30,15 @@ namespace cachelib {
+ 
+ constexpr static mode_t kRWMode = 0666;
+ typedef struct stat stat_t;
++char pmemRoot[256] = "/media/pmem0/matt/";
+ 
+ namespace detail {
+ 
+ int shmOpenImpl(const char* name, int flags) {
+-  const int fd = shm_open(name, flags, kRWMode);
++  char fullAddr[256];
++  strcpy(fullAddr, pmemRoot);
++  strcat(fullAddr, name);
++  const int fd = open(fullAddr, flags, kRWMode);
+ 
+   if (fd != -1) {
+     return fd;
+@@ -69,7 +74,10 @@ int shmOpenImpl(const char* name, int flags) {
+ }
+ 
+ void unlinkImpl(const char* const name) {
+-  const int ret = shm_unlink(name);
++  char fullAddr[256];
++  strcpy(fullAddr, pmemRoot);
++  strcat(fullAddr, name);
++  const int ret = unlink(fullAddr);
+   if (ret == 0) {
+     return;
+   }
