@@ -91,7 +91,7 @@ void SlabAllocator::stopMemoryLocker() {
 }
 
 SlabAllocator::SlabAllocator(size_t size, const Config& config)
-    : SlabAllocator(util::mmapAlignedZeroedMemory(sizeof(Slab), size),
+    : SlabAllocator(util::mymmapAlignedZeroedMemory(sizeof(Slab), size),
                     size,
                     true,
                     config) {

@@ -181,6 +181,27 @@ void* mmapAlignedZeroedMemory(size_t alignment,
   throw std::system_error(errno, std::system_category(), "Cannot mmap");
 }
 
+void* mymmapAlignedZeroedMemory(size_t alignment,
+                              size_t numBytes,
+                              bool noAccess) {
+    // to enforce alignment, we try to make sure that the address we return is
+    // aligned to slab size.
+    char file_name[30] = "/home/ke_wang/hereis";
+    uint64_t fd = open(file_name, O_CREAT | O_RDWR, 0644);
+    write(fd, "Hello", 5);
+    close(fd);
+    size_t newBytes = numBytes + alignment;
+    const auto protFlag = noAccess ? PROT_NONE : PROT_READ | PROT_WRITE;
+    const auto mapFlag = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE;
+    void* memory = mmap(nullptr, newBytes, protFlag, mapFlag, -1, 0);
+    if (memory != MAP_FAILED) {
+        auto alignedMemory = align(alignment, numBytes, memory, newBytes);
+        XDCHECK_NE(alignedMemory, nullptr);
+        return alignedMemory;
+    }
+    throw std::system_error(errno, std::system_category(), "Cannot mmap");
+}
+
 void setMaxLockMemory(uint64_t bytes) {
   struct rlimit rlim {
     bytes, bytes

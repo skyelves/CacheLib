@@ -145,6 +145,10 @@ void* mmapAlignedZeroedMemory(size_t alignment,
                               size_t numBytes,
                               bool noAccess = false);
 
+void* mymmapAlignedZeroedMemory(size_t alignment,
+                                size_t numBytes,
+                                bool noAccess = false);
+
 // get the number of pages in the range which are resident in the process.
 //
 // @param mem   memory start which is page aligned
