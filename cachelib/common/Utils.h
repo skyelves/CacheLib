@@ -145,6 +145,8 @@ void* mmapAlignedZeroedMemory(size_t alignment,
                               size_t numBytes,
                               bool noAccess = false);
 
+static std::atomic<int> pm_file_num;
+
 void* mymmapAlignedZeroedMemory(size_t alignment,
                                 size_t numBytes,
                                 bool noAccess = false);
