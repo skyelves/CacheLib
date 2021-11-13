@@ -186,39 +186,36 @@ void* mmapAlignedZeroedMemory(size_t alignment,
   throw std::system_error(errno, std::system_category(), "Cannot mmap");
 }
 
-void* mymmapAlignedZeroedMemory(size_t alignment,
+void* mmapAlignedZeroedMemoryOrPM(size_t alignment,
                               size_t numBytes,
-                              bool noAccess) {
+                              bool noAccess,
+                              bool onPM) {
     // to enforce alignment, we try to make sure that the address we return is
     // aligned to slab size.
+    void *memory = NULL;
     size_t newBytes = numBytes + alignment;
-    std::string file_name = "/media/pmem0/ke/cachelib/";
-    int tmp = pm_file_num++;
-    file_name = file_name + std::to_string(tmp);
-    uint64_t fd = open(file_name.c_str(), O_CREAT | O_RDWR, 0644);
-    if (posix_fallocate(fd, 0, newBytes) < 0){
-        puts("pm fallocate fail\n");
-        exit(-1);
+    if(onPM) {
+        std::string file_name = "/media/pmem0/ke/cachelib/";
+        int tmp = pm_file_num++;
+        file_name = file_name + std::to_string(tmp);
+        uint64_t fd = open(file_name.c_str(), O_CREAT | O_RDWR, 0644);
+        if (posix_fallocate(fd, 0, newBytes) < 0) {
+            puts("pm fallocate fail\n");
+            exit(-1);
+        }
+        memory = mmap(NULL, newBytes, PROT_READ | PROT_WRITE, MAP_SYNC | MAP_SHARED_VALIDATE, fd, 0);
+        close(fd);
+    } else {
+        const auto protFlag = noAccess ? PROT_NONE : PROT_READ | PROT_WRITE;
+        const auto mapFlag = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE;
+        memory = mmap(nullptr, newBytes, protFlag, mapFlag, -1, 0);
     }
-    void* memory = mmap(NULL, newBytes, PROT_READ | PROT_WRITE, MAP_SYNC | MAP_SHARED_VALIDATE, fd, 0);
-    close(fd);
     if (memory != MAP_FAILED) {
         auto alignedMemory = align(alignment, numBytes, memory, newBytes);
         XDCHECK_NE(alignedMemory, nullptr);
         return alignedMemory;
     }
     throw std::system_error(errno, std::system_category(), "Cannot mmap");
-
-//    size_t newBytes = numBytes + alignment;
-//    const auto protFlag = noAccess ? PROT_NONE : PROT_READ | PROT_WRITE;
-//    const auto mapFlag = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE;
-//    void* memory = mmap(nullptr, newBytes, protFlag, mapFlag, -1, 0);
-//    if (memory != MAP_FAILED) {
-//        auto alignedMemory = align(alignment, numBytes, memory, newBytes);
-//        XDCHECK_NE(alignedMemory, nullptr);
-//        return alignedMemory;
-//    }
-//    throw std::system_error(errno, std::system_category(), "Cannot mmap");
 }
 
 void setMaxLockMemory(uint64_t bytes) {

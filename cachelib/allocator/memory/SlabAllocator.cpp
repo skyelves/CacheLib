@@ -91,11 +91,19 @@ void SlabAllocator::stopMemoryLocker() {
 }
 
 SlabAllocator::SlabAllocator(size_t size, const Config& config)
-    : SlabAllocator(util::mymmapAlignedZeroedMemory(sizeof(Slab), size),
+    : SlabAllocator(util::mmapAlignedZeroedMemory(sizeof(Slab), size),
                     size,
                     true,
                     config) {
   XDCHECK(!isRestorable());
+}
+
+SlabAllocator::SlabAllocator(size_t size, const Config& config, bool onPM)
+        : SlabAllocator(util::mmapAlignedZeroedMemoryOrPM(sizeof(Slab), size, false, onPM),
+                        size,
+                        true,
+                        config) {
+    XDCHECK(!isRestorable());
 }
 
 SlabAllocator::SlabAllocator(void* memoryStart,

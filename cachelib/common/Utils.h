@@ -147,9 +147,10 @@ void* mmapAlignedZeroedMemory(size_t alignment,
 
 static std::atomic<int> pm_file_num;
 
-void* mymmapAlignedZeroedMemory(size_t alignment,
+void* mmapAlignedZeroedMemoryOrPM(size_t alignment,
                                 size_t numBytes,
-                                bool noAccess = false);
+                                bool noAccess = false,
+                                bool onPM = false);
 
 // get the number of pages in the range which are resident in the process.
 //
