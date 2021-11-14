@@ -3,12 +3,8 @@
     "cacheSizeMB": 38000,
     "navyReaderThreads": 32,
     "navyWriterThreads": 32,
-    "nvmCachePaths": ["/dev/md0"],
-    "nvmCacheSizeMB": 932000,
-    "writeAmpDeviceList": [
-      "nvme1n1",
-      "nvme2n1"
-    ],
+    "nvmCachePaths": ["/home/ke_wang/test/cachelib"],
+    "nvmCacheSizeMB": 64000,
     "navyBigHashSizePct": 0,
     "navyBlockSize": 4096,
     "navySizeClasses": [],
@@ -48,8 +44,6 @@
       }
     ],
 
-
-    "opDelayNs": 5000000,
     "opDelayBatch": 1
   }
 }
