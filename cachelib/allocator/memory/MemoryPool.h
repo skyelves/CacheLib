@@ -63,6 +63,22 @@ class MemoryPool {
              SlabAllocator& alloc,
              const std::set<uint32_t>& allocSizes);
 
+    // creates a pool with the id and size.
+    //
+    // @param  id         the unique pool id.
+    // @param  poolSize   max size of the pool.
+    // @param  alloc      the slab allocator for requesting the slabs.
+    // @param  allocPM    the PM slab allocator for requesting the slabs.
+    // @param  allocSizes the set of allocation class sizes for this pool,
+    //                    sorted in increasing order. The largest size should be
+    //                    less than Slab::kSize.
+    // @throw std::invalid_argument if allocSizes is invalid
+    MemoryPool(PoolId id,
+               size_t poolSize,
+               SlabAllocator& alloc,
+               SlabAllocator *allocPM,
+               const std::set<uint32_t>& allocSizes);
+
   // creates a pool by restoring it from a serialized buffer.
   // @param object  Object that contains the data to restore MemoryPool
   // @param alloc   the slab allocator for fetching the header info.
@@ -381,6 +397,9 @@ class MemoryPool {
 
   // the allocator for slabs.
   SlabAllocator& slabAllocator_;
+
+  // the PM allocator for slabs.
+  SlabAllocator *slabAllocatorPM_{NULL};
 
   // slabs allocated from the slab allocator for this memory pool, that are
   // not currently in use.

@@ -28,6 +28,9 @@ constexpr unsigned int MemoryPoolManager::kMaxPools;
 MemoryPoolManager::MemoryPoolManager(SlabAllocator& slabAlloc)
     : slabAlloc_(slabAlloc) {}
 
+MemoryPoolManager::MemoryPoolManager(SlabAllocator& slabAlloc, SlabAllocator* slabAllocPM)
+        : slabAlloc_(slabAlloc), slabAllocPM_(slabAllocPM) {}
+
 MemoryPoolManager::MemoryPoolManager(
     const serialization::MemoryPoolManagerObject& object,
     SlabAllocator& slabAlloc)
@@ -110,7 +113,12 @@ PoolId MemoryPoolManager::createNewPool(folly::StringPiece name,
   }
 
   const PoolId id = nextPoolId_;
-  pools_[id].reset(new MemoryPool(id, poolSize, slabAlloc_, allocSizes));
+  SlabAllocator *tmpSlabAlloc = &slabAlloc_;
+  if (slabAllocPM_!= nullptr && (id % 2)){
+      tmpSlabAlloc = slabAllocPM_;
+  }
+  pools_[id].reset(new MemoryPool(id, poolSize, *tmpSlabAlloc, allocSizes));
+//  pools_[id].reset(new MemoryPool(id, poolSize, slabAlloc_, allocSizes));
   poolsByName_.insert({name.str(), id});
   nextPoolId_++;
   return id;

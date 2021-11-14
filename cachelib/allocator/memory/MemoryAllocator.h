@@ -643,6 +643,9 @@ class MemoryAllocator {
   // the instance of slab allocator we will use to allocate slabs.
   SlabAllocator slabAllocator_;
 
+  // the instance of slab allocator we will use to allocate slabs on PM.
+  SlabAllocator slabAllocatorOnPM_;
+
   // the instance used for book keeping information about the memory pools
   // configuration.
   MemoryPoolManager memoryPoolManager_;

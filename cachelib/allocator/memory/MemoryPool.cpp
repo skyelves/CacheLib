@@ -64,6 +64,20 @@ MemoryPool::MemoryPool(PoolId id,
   checkState();
 }
 
+MemoryPool::MemoryPool(PoolId id,
+                       size_t poolSize,
+                       SlabAllocator& alloc,
+                       SlabAllocator *allocPM,
+                       const std::set<uint32_t>& allocSizes)
+        : id_(id),
+          maxSize_{poolSize},
+          slabAllocator_(alloc),
+          slabAllocatorPM_(allocPM),
+          acSizes_(allocSizes.begin(), allocSizes.end()),
+          ac_(createAllocationClasses()) {
+    checkState();
+}
+
 MemoryPool::MemoryPool(const serialization::MemoryPoolObject& object,
                        SlabAllocator& alloc)
     : id_(*object.id_ref()),
