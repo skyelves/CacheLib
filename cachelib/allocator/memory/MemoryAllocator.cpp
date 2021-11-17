@@ -37,7 +37,7 @@ MemoryAllocator::MemoryAllocator(Config config,
                      memSize,
                      {config_.disableFullCoredump, config_.lockMemory}),
       slabAllocatorOnPM_(memSize,
-                     {config_.disableFullCoredump, config_.lockMemory}),
+                     {config_.disableFullCoredump, config_.lockMemory}, true),
       memoryPoolManager_(slabAllocator_) {
   checkConfig(config_);
 }
@@ -47,8 +47,8 @@ MemoryAllocator::MemoryAllocator(Config config, size_t memSize)
       slabAllocator_(memSize,
                      {config_.disableFullCoredump, config_.lockMemory}),
       slabAllocatorOnPM_(memSize,
-                     {config_.disableFullCoredump, config_.lockMemory}),
-      memoryPoolManager_(slabAllocator_, &slabAllocatorOnPM_) {
+                     {config_.disableFullCoredump, config_.lockMemory}, true),
+      memoryPoolManager_(slabAllocator_, slabAllocatorOnPM_) {
   checkConfig(config_);
 }
 
@@ -67,7 +67,7 @@ MemoryAllocator::MemoryAllocator(
                      memSize,
                      {config_.disableFullCoredump, config_.lockMemory}),
       slabAllocatorOnPM_(memSize,
-                     {config_.disableFullCoredump, config_.lockMemory}),
+                     {config_.disableFullCoredump, config_.lockMemory}, true),
       memoryPoolManager_(*object.memoryPoolManager_ref(), slabAllocator_) {
   checkConfig(config_);
 }

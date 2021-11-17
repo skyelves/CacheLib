@@ -26,15 +26,15 @@ using namespace facebook::cachelib;
 constexpr unsigned int MemoryPoolManager::kMaxPools;
 
 MemoryPoolManager::MemoryPoolManager(SlabAllocator& slabAlloc)
-    : slabAlloc_(slabAlloc) {}
+    : slabAlloc_(slabAlloc), slabAllocPM_(slabAlloc) {}
 
-MemoryPoolManager::MemoryPoolManager(SlabAllocator& slabAlloc, SlabAllocator* slabAllocPM)
+MemoryPoolManager::MemoryPoolManager(SlabAllocator& slabAlloc, SlabAllocator& slabAllocPM)
         : slabAlloc_(slabAlloc), slabAllocPM_(slabAllocPM) {}
 
 MemoryPoolManager::MemoryPoolManager(
     const serialization::MemoryPoolManagerObject& object,
     SlabAllocator& slabAlloc)
-    : nextPoolId_(*object.nextPoolId_ref()), slabAlloc_(slabAlloc) {
+    : nextPoolId_(*object.nextPoolId_ref()), slabAlloc_(slabAlloc), slabAllocPM_(slabAlloc) {
   if (!slabAlloc_.isRestorable()) {
     throw std::logic_error(
         "Memory Pool Manager can not be restored,"
@@ -113,12 +113,9 @@ PoolId MemoryPoolManager::createNewPool(folly::StringPiece name,
   }
 
   const PoolId id = nextPoolId_;
-  SlabAllocator *tmpSlabAlloc = &slabAlloc_;
-  if (slabAllocPM_!= nullptr && (id % 2)){
-      tmpSlabAlloc = slabAllocPM_;
-  }
-  pools_[id].reset(new MemoryPool(id, poolSize, *tmpSlabAlloc, allocSizes));
-//  pools_[id].reset(new MemoryPool(id, poolSize, slabAlloc_, allocSizes));
+  pools_[id].reset(new MemoryPool(id, poolSize, slabAlloc_, slabAllocPM_, allocSizes));
+//  pools_[id].reset(new MemoryPool(id, poolSize, slabAllocPM_, allocSizes));
+//    pools_[id].reset(new MemoryPool(id, poolSize, slabAlloc_, allocSizes));
   poolsByName_.insert({name.str(), id});
   nextPoolId_++;
   return id;

@@ -56,6 +56,21 @@ class AllocationClass {
                   uint32_t allocSize,
                   const SlabAllocator& s);
 
+    // @param classId   the id corresponding to this allocation class
+    // @param poolId    the poolId corresponding to this allocation class
+    // @param allocSize the size of allocations that this allocation class
+    //                  handles.
+    // @param s         the slab allocator for fetching the header info.
+    // @param sPM       the PM slab allocator for fetching the header info.
+    //
+    // @throw std::invalid_argument if the classId is invalid or the allocSize
+    //        is invalid.
+    AllocationClass(ClassId classId,
+                    PoolId poolId,
+                    uint32_t allocSize,
+                    const SlabAllocator& s,
+                    const SlabAllocator& sPM);
+
   // restore this AllocationClass from the serialized data.
   // @param object  Object that contains the data to restore AllocationClass
   // @param poolId  the poolId corresponding to this allocation class
@@ -397,6 +412,8 @@ class AllocationClass {
   // @throws std::out_of_range if alloc map does not exist
   std::vector<bool>& getSlabReleaseAllocMapLocked(const Slab* slab);
 
+  SlabHeader* getSlabHeader(Slab* slab);
+
   // acquires a new slab for this allocation class.
   void addSlabLocked(Slab* slab);
 
@@ -430,6 +447,8 @@ class AllocationClass {
   Slab* currSlab_{nullptr};
 
   const SlabAllocator& slabAlloc_;
+
+  const SlabAllocator& slabAllocPM_;
 
   // slabs that belong to this allocation class and are not entirely free. The
   // un-used allocations in this are present in freedAllocations_.

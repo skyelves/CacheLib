@@ -76,7 +76,7 @@ class MemoryPool {
     MemoryPool(PoolId id,
                size_t poolSize,
                SlabAllocator& alloc,
-               SlabAllocator *allocPM,
+               SlabAllocator& allocPM,
                const std::set<uint32_t>& allocSizes);
 
   // creates a pool by restoring it from a serialized buffer.
@@ -399,7 +399,7 @@ class MemoryPool {
   SlabAllocator& slabAllocator_;
 
   // the PM allocator for slabs.
-  SlabAllocator *slabAllocatorPM_{NULL};
+  SlabAllocator& slabAllocatorPM_;
 
   // slabs allocated from the slab allocator for this memory pool, that are
   // not currently in use.

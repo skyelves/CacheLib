@@ -61,6 +61,8 @@ class SlabAllocator {
     bool lockMemory{false};
   };
 
+    bool onPM{false};
+
   // initialize the slab allocator for the range of memory starting from
   // memoryStart, up to memorySize bytes. The available memory is divided into
   // space for slab headers and slabs. When created this way, the slab
@@ -81,7 +83,7 @@ class SlabAllocator {
   // the object is destroyed.
   SlabAllocator(size_t memorySize, const Config& config);
 
-  SlabAllocator(size_t memorySize, const Config& config, bool onPM);
+  SlabAllocator(size_t memorySize, const Config& config, bool _onPM);
 
   // free up and unmap the mmaped memory if the allocator was created with
   // one.

@@ -53,7 +53,7 @@ class MemoryPoolManager {
 
   // creates a memory pool manager for the DRAM and PM slabAllocator.
   // @param slabAlloc  the slab allocator to be used for the memory pools.
-  MemoryPoolManager(SlabAllocator& slabAlloc, SlabAllocator* slabAllocPM);
+  MemoryPoolManager(SlabAllocator& slabAlloc, SlabAllocator& slabAllocPM);
 
   // creates a memory pool manager by restoring it from a serialized buffer.
   //
@@ -229,7 +229,7 @@ class MemoryPoolManager {
 
   // slab allocator on PM for the pools
   // we can not define slabAllocPM_ as a reference member here cause sometimes we don't need a PM allocator
-  SlabAllocator* slabAllocPM_{nullptr};
+  SlabAllocator& slabAllocPM_;
 
   // Number of slabs to advise away
   // This is target number of slabs to be advised across all pools.

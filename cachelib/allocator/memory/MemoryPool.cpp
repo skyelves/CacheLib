@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <string>
+#include <stdlib.h>
 
 #include "cachelib/allocator/memory/AllocationClass.h"
 #include "cachelib/allocator/memory/SlabAllocator.h"
@@ -59,6 +60,7 @@ MemoryPool::MemoryPool(PoolId id,
     : id_(id),
       maxSize_{poolSize},
       slabAllocator_(alloc),
+      slabAllocatorPM_(alloc),
       acSizes_(allocSizes.begin(), allocSizes.end()),
       ac_(createAllocationClasses()) {
   checkState();
@@ -67,7 +69,7 @@ MemoryPool::MemoryPool(PoolId id,
 MemoryPool::MemoryPool(PoolId id,
                        size_t poolSize,
                        SlabAllocator& alloc,
-                       SlabAllocator *allocPM,
+                       SlabAllocator& allocPM,
                        const std::set<uint32_t>& allocSizes)
         : id_(id),
           maxSize_{poolSize},
@@ -85,6 +87,7 @@ MemoryPool::MemoryPool(const serialization::MemoryPoolObject& object,
       currSlabAllocSize_(*object.currSlabAllocSize_ref()),
       currAllocSize_(*object.currAllocSize_ref()),
       slabAllocator_(alloc),
+      slabAllocatorPM_(alloc),
       acSizes_(createMcSizesFromSerialized(object)),
       ac_(createMcFromSerialized(object, getId(), alloc)),
       curSlabsAdvised_{static_cast<uint64_t>(*object.numSlabsAdvised_ref())},
@@ -164,7 +167,7 @@ MemoryPool::ACVector MemoryPool::createAllocationClasses() const {
       throw std::invalid_argument(
           folly::sformat("Invalid allocation class size {}", size));
     }
-    ac.emplace_back(new AllocationClass(id++, getId(), size, slabAllocator_));
+    ac.emplace_back(new AllocationClass(id++, getId(), size, slabAllocator_, slabAllocatorPM_));
   }
   XDCHECK(std::is_sorted(ac.begin(),
                          ac.end(),
@@ -269,7 +272,8 @@ Slab* MemoryPool::getSlabLocked() noexcept {
     }
   }
 
-  auto slab = slabAllocator_.makeNewSlab(id_);
+//  auto slab = rand() % 2 ? slabAllocator_.makeNewSlab(id_) : slabAllocatorPM_.makeNewSlab(id_);
+    auto slab = slabAllocator_.makeNewSlab(id_);
   // if slab allocator failed to allocate, decrement the size.
   if (slab == nullptr) {
     currSlabAllocSize_ -= Slab::kSize;

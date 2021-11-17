@@ -50,8 +50,23 @@ AllocationClass::AllocationClass(ClassId classId,
       poolId_(poolId),
       allocationSize_(allocSize),
       slabAlloc_(s),
+      slabAllocPM_(s),
       freedAllocations_{slabAlloc_.createPtrCompressor<FreeAlloc>()} {
   checkState();
+}
+
+AllocationClass::AllocationClass(ClassId classId,
+                                 PoolId poolId,
+                                 uint32_t allocSize,
+                                 const SlabAllocator& s,
+                                 const SlabAllocator& sPM)
+        : classId_(classId),
+          poolId_(poolId),
+          allocationSize_(allocSize),
+          slabAlloc_(s),
+          slabAllocPM_(sPM),
+          freedAllocations_{slabAlloc_.createPtrCompressor<FreeAlloc>()} {
+    checkState();
 }
 
 void AllocationClass::checkState() const {
@@ -101,6 +116,7 @@ AllocationClass::AllocationClass(
       currOffset_(static_cast<uint32_t>(*object.currOffset_ref())),
       currSlab_(s.getSlabForIdx(*object.currSlabIdx_ref())),
       slabAlloc_(s),
+      slabAllocPM_(s),
       freedAllocations_(*object.freedAllocationsObject_ref(),
                         slabAlloc_.createPtrCompressor<FreeAlloc>()),
       canAllocate_(*object.canAllocate_ref()) {
@@ -119,9 +135,18 @@ AllocationClass::AllocationClass(
   checkState();
 }
 
+SlabHeader* AllocationClass::getSlabHeader(Slab* slab) {
+    auto header = slabAlloc_.getSlabHeader(slab);
+    if(header == nullptr) {
+        header = slabAllocPM_.getSlabHeader(slab);
+    }
+    return header;
+}
+
 void AllocationClass::addSlabLocked(Slab* slab) {
   canAllocate_ = true;
-  auto header = slabAlloc_.getSlabHeader(slab);
+//  auto header = slabAlloc_.getSlabHeader(slab);
+  auto header = getSlabHeader(slab);
   header->classId = classId_;
   header->allocSize = allocationSize_;
   freeSlabs_.push_back(slab);
