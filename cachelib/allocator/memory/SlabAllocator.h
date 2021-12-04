@@ -435,6 +435,23 @@ class SlabAllocator {
       std::numeric_limits<uint64_t>::max() -
       (static_cast<uint64_t>(1) << Slab::kNumSlabBits) + 1;
 
+
+
+    // start of the slab memory region aligned to slab size
+    void* const PMStart_{nullptr};
+
+    // size of memory aligned to slab size
+    const size_t PMSize_;
+
+    // beginning of the slab memory that we actually give out to the user. This
+    // is used to ensure that we dont treat slabs before this, that are used for
+    // headers as valid slab.
+    Slab* const slabPMStart_{nullptr};
+
+    // the memory address up to which we have converted into slabs.
+    Slab* PMnextSlabAllocation_{nullptr};
+
+
   // Allow access to private members by unit tests
   friend class facebook::cachelib::tests::AllocTestBase;
 };

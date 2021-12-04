@@ -113,6 +113,10 @@ SlabAllocator::SlabAllocator(void* memoryStart,
       memorySize_(roundDownToSlabSize(memorySize)),
       slabMemoryStart_(computeSlabMemoryStart(memoryStart_, memorySize_)),
       nextSlabAllocation_(slabMemoryStart_),
+      PMStart_(util::mmapAlignedZeroedMemory(sizeof(Slab), memorySize)), // todo: not always have PM
+      PMSize_(roundDownToSlabSize(memorySize)), // todo: replace with PMSize
+      slabPMStart_(computeSlabMemoryStart(PMStart_, PMSize_)),
+      PMnextSlabAllocation_(slabPMStart_),
       ownsMemory_(ownsMemory) {
   checkState();
 
@@ -142,6 +146,10 @@ SlabAllocator::SlabAllocator(const serialization::SlabAllocatorObject& object,
       memorySize_(*object.memorySize_ref()),
       slabMemoryStart_(computeSlabMemoryStart(memoryStart_, memorySize_)),
       nextSlabAllocation_(getSlabForIdx(*object.nextSlabIdx_ref())),
+      PMStart_(util::mmapAlignedZeroedMemory(sizeof(Slab), memSize)), // todo: not always have PM
+      PMSize_(roundDownToSlabSize(memSize)), // todo: replace with PMSize
+      slabPMStart_(computeSlabMemoryStart(PMStart_, PMSize_)),
+      PMnextSlabAllocation_(slabPMStart_),
       canAllocate_(*object.canAllocate_ref()),
       ownsMemory_(false) {
   if (Slab::kSize != *object.slabSize_ref()) {
