@@ -66,6 +66,11 @@ void SlabAllocator::checkState() const {
         folly::sformat("Invalid nextSlabAllocation_ {}, with SlabMemoryEnd {}",
                        nextSlabAllocation_,
                        getSlabMemoryEnd()));
+  } else if (PMnextSlabAllocation_ > getSlabMemoryEnd(true)) {
+      throw std::invalid_argument(
+              folly::sformat("Invalid nextSlabAllocation_ {}, with SlabMemoryEnd {}",
+                             PMnextSlabAllocation_,
+                             getSlabMemoryEnd(true)));
   }
 
   for (const auto slab : freeSlabs_) {
@@ -119,6 +124,8 @@ SlabAllocator::SlabAllocator(void* memoryStart,
       PMnextSlabAllocation_(slabPMStart_),
       ownsMemory_(ownsMemory) {
   checkState();
+
+    MemorySlabCapacity = (reinterpret_cast<size_t>(memoryStart_) + memorySize_ - reinterpret_cast<size_t>(slabMemoryStart_))/ sizeof(Slab);
 
   static_assert(!(sizeof(Slab) & (sizeof(Slab) - 1)),
                 "slab size must be power of two");
@@ -295,7 +302,7 @@ unsigned int SlabAllocator::getNumUsableSlabs() const noexcept {
 }
 
 unsigned int SlabAllocator::getNumUsableAndAdvisedSlabs() const noexcept {
-  return static_cast<unsigned int>(getSlabMemoryEnd() - slabMemoryStart_);
+  return static_cast<unsigned int>(getSlabMemoryEnd() - slabMemoryStart_ + getSlabMemoryEnd(true) - slabPMStart_);
 }
 
 Slab* SlabAllocator::computeSlabMemoryStart(void* memoryStart,
@@ -335,13 +342,20 @@ Slab* SlabAllocator::makeNewSlabImpl() {
              reinterpret_cast<uintptr_t>(nextSlabAllocation_) % sizeof(Slab));
 
   // check if we have any more memory left.
-  if (allMemorySlabbed()) {
+  size_t _allMemorySlabbed= allMemorySlabbed();
+  if (_allMemorySlabbed == 0) {
     // free list is empty and we have slabbed all the memory.
     canAllocate_ = false;
     return nullptr;
+  } else if(_allMemorySlabbed == 1){
+      return nextSlabAllocation_++;
+  } else if(_allMemorySlabbed == 2){
+      return PMnextSlabAllocation_++;
+  } else if(_allMemorySlabbed == 3){
+      return PMnextSlabAllocation_++;
   }
 
-  // allocate a new slab.
+    // allocate a new slab.
   return nextSlabAllocation_++;
 }
 

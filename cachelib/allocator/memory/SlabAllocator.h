@@ -114,7 +114,7 @@ class SlabAllocator {
   // this point of time.
   bool allSlabsAllocated() const {
     LockHolder l(lock_);
-    return allMemorySlabbed() && freeSlabs_.empty();
+    return (!allMemorySlabbed()) && freeSlabs_.empty();
   }
 
   // fetch a random allocation in memory.
@@ -171,8 +171,9 @@ class SlabAllocator {
   FOLLY_ALWAYS_INLINE SlabHeader* getSlabHeader(
       const void* memory) const noexcept {
     const auto* slab = getSlabForMemory(memory);
+    bool onPM = (slab >= slabPMStart_ && slab < PMnextSlabAllocation_);
     if (LIKELY(isValidSlab(slab))) {
-      const auto slabIndex = static_cast<SlabIdx>(slab - slabMemoryStart_);
+      const auto slabIndex = onPM ? (static_cast<SlabIdx>(slab - slabPMStart_) + MemorySlabCapacity) : (static_cast<SlabIdx>(slab - slabMemoryStart_));
       return getSlabHeader(slabIndex);
     }
     return nullptr;
@@ -200,8 +201,9 @@ class SlabAllocator {
   // true if the slab is a valid allocated slab in the memory belonging to this
   // allocator.
   FOLLY_ALWAYS_INLINE bool isValidSlab(const Slab* slab) const noexcept {
-    return slab >= slabMemoryStart_ && slab < nextSlabAllocation_ &&
-           getSlabForMemory(static_cast<const void*>(slab)) == slab;
+    return ((slab >= slabMemoryStart_ && slab < nextSlabAllocation_) ||
+            (slab >= slabPMStart_ && slab < PMnextSlabAllocation_)) &&
+            (getSlabForMemory(static_cast<const void*>(slab)) == slab);
   }
 
   // returns the slab in which the memory resides, irrespective of the
@@ -232,7 +234,8 @@ class SlabAllocator {
           folly::sformat("Invalid pointer ptr {}", ptr));
     }
 
-    const auto slabIndex = static_cast<SlabIdx>(slab - slabMemoryStart_);
+    bool onPM = (slab >= slabPMStart_ && slab < PMnextSlabAllocation_);
+    const auto slabIndex = onPM ? (static_cast<SlabIdx>(slab - slabPMStart_) + MemorySlabCapacity) : (static_cast<SlabIdx>(slab - slabMemoryStart_));
     const SlabHeader* header = getSlabHeader(slabIndex);
 
     const uint32_t allocSize = header->allocSize;
@@ -255,12 +258,12 @@ class SlabAllocator {
 
     const SlabIdx slabIndex = ptr.getSlabIdx();
     const uint32_t allocIdx = ptr.getAllocIdx();
-    const Slab* slab = &slabMemoryStart_[slabIndex];
+    const Slab* slab = slabIndex >= MemorySlabCapacity ? &slabPMStart_[slabIndex - MemorySlabCapacity] : &slabMemoryStart_[slabIndex];
 
 #ifndef NDEBUG
     if (UNLIKELY(!isValidSlab(slab))) {
       throw std::invalid_argument(
-          folly::sformat("Invalid slab index {}", slabIndex));
+          folly::sformat("MemorySlabCapacity {}, Invalid slab index {}", MemorySlabCapacity, slabIndex));
     }
 #endif
 
@@ -294,7 +297,8 @@ class SlabAllocator {
     // We should never be querying for a slab that is not valid or beyond
     // nextSlabAllocation_.
     XDCHECK(slab == nextSlabAllocation_ || isValidSlab(slab));
-    return static_cast<SlabIdx>(slab - slabMemoryStart_);
+      bool onPM = (slab >= slabPMStart_ && slab < PMnextSlabAllocation_);
+      return onPM ? (static_cast<SlabIdx>(slab - slabPMStart_) + MemorySlabCapacity) : (static_cast<SlabIdx>(slab - slabMemoryStart_));
   }
 
   // returns the slab corresponding to the idx, irrespective of the validity of
@@ -304,7 +308,8 @@ class SlabAllocator {
     if (idx == kNullSlabIdx) {
       return nullptr;
     }
-    return &slabMemoryStart_[idx];
+    bool onPM = idx >= MemorySlabCapacity;
+    return onPM ? &slabPMStart_[idx - MemorySlabCapacity] : &slabMemoryStart_[idx];
   }
 
   template <typename PtrType>
@@ -330,21 +335,38 @@ class SlabAllocator {
   void checkState() const;
 
   // returns first byte after the end of memory region we own.
-  const Slab* getSlabMemoryEnd() const noexcept {
-    return reinterpret_cast<Slab*>(reinterpret_cast<uint8_t*>(memoryStart_) +
-                                   memorySize_);
+  const Slab* getSlabMemoryEnd(bool onPM_ = false) const noexcept {
+//      return reinterpret_cast<Slab *>(reinterpret_cast<uint8_t *>(memoryStart_) + memorySize_);
+      return reinterpret_cast<Slab *>(onPM_ ? (reinterpret_cast<uint8_t *>(PMStart_) + PMSize_) :
+                                      (reinterpret_cast<uint8_t *>(memoryStart_) + memorySize_));
   }
 
   // returns true if we have slabbed all the memory that is available to us.
   // false otherwise.
-  bool allMemorySlabbed() const noexcept {
-    return nextSlabAllocation_ == getSlabMemoryEnd();
+  size_t allMemorySlabbed() const noexcept {
+      // 0: all slabbed
+      // 1: DRAM available
+      // 2: PM available
+      // 3: both available
+    size_t DRAMSlabbed = (nextSlabAllocation_ == getSlabMemoryEnd(false));
+    size_t PMSlabbed = (PMnextSlabAllocation_ == getSlabMemoryEnd(true));
+    if (DRAMSlabbed && PMSlabbed)
+        return 0;
+    else if(!DRAMSlabbed && PMSlabbed)
+        return 1;
+    else if(DRAMSlabbed && !PMSlabbed)
+        return 2;
+    else
+        return 3;
+//    return nextSlabAllocation_ == getSlabMemoryEnd();
+//    return (nextSlabAllocation_ == getSlabMemoryEnd(false)) && (PMnextSlabAllocation_ == getSlabMemoryEnd(true));
   }
 
   // this is for pointer compression.
   FOLLY_ALWAYS_INLINE SlabHeader* getSlabHeader(
       unsigned int slabIndex) const noexcept {
-    return reinterpret_cast<SlabHeader*>(memoryStart_) + slabIndex;
+      bool onPM = slabIndex >= MemorySlabCapacity;
+    return onPM ? (reinterpret_cast<SlabHeader*>(PMStart_) + slabIndex - MemorySlabCapacity) : (reinterpret_cast<SlabHeader*>(memoryStart_) + slabIndex);
   }
 
   // implementation of makeNewSlab that takes care of locking, free list and
@@ -362,13 +384,13 @@ class SlabAllocator {
   // exclude associated slab memory from core dump
   //
   // @throw std::system_error on any failure to advise
-  void excludeMemoryFromCoredump() const;
+  void excludeMemoryFromCoredump() const; //todo: do not support PM yet
 
   // used by the memory locker to get pages allocated and locked into the
   // binary. With a cache size of 256GB, this will have about 60 million page
   // faults to reoslve and we want to spread that out evenly and do it
   // asynchronously.
-  void lockMemoryAsync() noexcept;
+  void lockMemoryAsync() noexcept; //todo: do not support PM yet
 
   // shutsdown the memory locker if it is still running.
   void stopMemoryLocker();
@@ -436,6 +458,8 @@ class SlabAllocator {
       (static_cast<uint64_t>(1) << Slab::kNumSlabBits) + 1;
 
 
+
+    size_t MemorySlabCapacity;
 
     // start of the slab memory region aligned to slab size
     void* const PMStart_{nullptr};
