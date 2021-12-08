@@ -325,7 +325,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
 
   void* memory = allocator_->allocate(pid, requiredSize);
   if (memory == nullptr && !config_.disableEviction) {
-    memory = findEviction(pid, cid);
+    memory = findEviction(pid, cid); // todo: modify the find eviction logic here
   }
 
   ItemHandle handle;

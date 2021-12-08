@@ -459,7 +459,7 @@ class SlabAllocator {
 
 
 
-    size_t MemorySlabCapacity;
+    size_t MemorySlabCapacity; // the Index of the PMSlab is in the range [MemorySlabCapacity, MemorySlabCapacity + PMSlabCapacity)
 
     // start of the slab memory region aligned to slab size
     void* const PMStart_{nullptr};

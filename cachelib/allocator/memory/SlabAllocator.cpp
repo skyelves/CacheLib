@@ -118,8 +118,8 @@ SlabAllocator::SlabAllocator(void* memoryStart,
       memorySize_(roundDownToSlabSize(memorySize)),
       slabMemoryStart_(computeSlabMemoryStart(memoryStart_, memorySize_)),
       nextSlabAllocation_(slabMemoryStart_),
-      PMStart_(util::mmapAlignedZeroedMemory(sizeof(Slab), memorySize)), // todo: not always have PM
-      PMSize_(roundDownToSlabSize(memorySize)), // todo: replace with PMSize
+      PMStart_(util::mmapAlignedZeroedMemory(sizeof(Slab), memorySize*10)), // todo: not always have PM
+      PMSize_(roundDownToSlabSize(memorySize*10)), // todo: replace with PMSize
       slabPMStart_(computeSlabMemoryStart(PMStart_, PMSize_)),
       PMnextSlabAllocation_(slabPMStart_),
       ownsMemory_(ownsMemory) {
@@ -343,6 +343,10 @@ Slab* SlabAllocator::makeNewSlabImpl() {
 
   // check if we have any more memory left.
   size_t _allMemorySlabbed= allMemorySlabbed();
+    // 0: all slabbed
+    // 1: DRAM available
+    // 2: PM available
+    // 3: both available
   if (_allMemorySlabbed == 0) {
     // free list is empty and we have slabbed all the memory.
     canAllocate_ = false;
@@ -352,7 +356,7 @@ Slab* SlabAllocator::makeNewSlabImpl() {
   } else if(_allMemorySlabbed == 2){
       return PMnextSlabAllocation_++;
   } else if(_allMemorySlabbed == 3){
-      return PMnextSlabAllocation_++;
+      return nextSlabAllocation_++;
   }
 
     // allocate a new slab.

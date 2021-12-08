@@ -1,0 +1,39 @@
+{
+  "cache_config" : {
+    "cacheSizeMB" : 512,
+    "navyReaderThreads": 32,
+    "navyWriterThreads": 32,
+    "nvmCachePaths": ["/home/ke_wang/test/cachelib"],
+    "nvmCacheSizeMB": 51200,
+    "navyBigHashSizePct": 0,
+    "navyBlockSize": 4096,
+    "navySizeClasses": [],
+    "navyParcelMemoryMB": 6048,
+    "poolRebalanceIntervalSec" : 0,
+    "htBucketPower" : 30,
+    "htLockPower" : 20,
+    "numPools" : 1,
+    "poolSizes" : [1]
+  },
+  "test_config" :
+  {
+
+
+    "numOps" : 1000000,
+    "numThreads" : 4,
+    "numKeys" : 4000000,
+
+
+    "keySizeRange" : [30, 32],
+    "keySizeRangeProbability" : [1.0],
+
+    "valSizeRange" : [64024],
+    "valSizeRangeProbability" : [1.0],
+
+    "getRatio" : 0.5,
+    "setRatio" : 0.5,
+    "keyPoolDistribution": [1],
+    "opPoolDistribution" : [1]
+  }
+
+}
