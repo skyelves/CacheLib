@@ -98,6 +98,14 @@ SlabAllocator::SlabAllocator(size_t size, const Config& config)
   XDCHECK(!isRestorable());
 }
 
+SlabAllocator::SlabAllocator(size_t size, const Config& config, bool onPM)
+        : SlabAllocator(util::mmapAlignedZeroedMemoryOrPM(sizeof(Slab), size, false, onPM),
+                        size,
+                        true,
+                        config) {
+    XDCHECK(!isRestorable());
+}
+
 SlabAllocator::SlabAllocator(void* memoryStart,
                              size_t memorySize,
                              const Config& config)

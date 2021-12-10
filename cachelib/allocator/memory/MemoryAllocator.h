@@ -138,6 +138,8 @@ class MemoryAllocator {
   //        passed in is too small to instantiate a slab allocator.
   MemoryAllocator(Config config, size_t memSize);
 
+    MemoryAllocator(Config config, size_t memSize, bool onPM);
+
   // creates a memory allocator by restoring it from a serialized buffer.
   // @param object          Object that contains the data to restore
   //                        MemoryAllocator

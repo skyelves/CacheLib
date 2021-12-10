@@ -1148,7 +1148,7 @@ class CacheAllocator : public CacheBase {
   // it does not exist.
   //
   // @return pointer to a valid MMContainer that is initialized.
-  MMContainer& getEvictableMMContainer(PoolId pid, ClassId cid) const noexcept;
+  MMContainer& getEvictableMMContainer(PoolId pid, ClassId cid, bool onPM = false) const noexcept;
 
   // same as above, but return the unevictable mm container
   MMContainer& getUnevictableMMContainer(PoolId pid,
@@ -1235,10 +1235,13 @@ class CacheAllocator : public CacheBase {
   //
   // @throw std::overflow_error is the maximum item refcount is execeeded by
   //        creating this item handle.
-  ItemHandle findInternal(Key key) {
+  ItemHandle findInternal(Key key, bool onPM = false) {
     // Note: this method can not be const because we need  a non-const
     // reference to create the ItemReleaser.
-    return accessContainer_->find(key);
+    if(onPM)
+        return PMaccessContainer_->find(key);
+    else
+        return accessContainer_->find(key);
   }
 
   // look up an item by its key. This ignores the nvm cache and only does RAM
@@ -1250,7 +1253,7 @@ class CacheAllocator : public CacheBase {
   //
   // @return      the handle for the item or a handle to nullptr if the key does
   //              not exist.
-  FOLLY_ALWAYS_INLINE ItemHandle findFastImpl(Key key, AccessMode mode);
+  FOLLY_ALWAYS_INLINE ItemHandle findFastImpl(Key key, AccessMode mode, bool onPM = false);
 
   // Moves a regular item to a different slab. This should only be used during
   // slab release after the item's moving bit has been set. The user supplied
@@ -1391,7 +1394,7 @@ class CacheAllocator : public CacheBase {
   // @param  pid  the id of the pool to look for evictions inside
   // @param  cid  the id of the class to look for evictions inside
   // @return An evicted item or nullptr  if there is no suitable candidate.
-  Item* findEviction(PoolId pid, ClassId cid);
+  Item* findEviction(PoolId pid, ClassId cid, bool onPM = false);
 
   using EvictionIterator = typename MMContainer::Iterator;
 
@@ -1404,6 +1407,16 @@ class CacheAllocator : public CacheBase {
   //          handle to the item. On failure an empty handle.
   ItemHandle advanceIteratorAndTryEvictRegularItem(MMContainer& mmContainer,
                                                    EvictionIterator& itr);
+
+    // Advance the current iterator and try to evict a regular item
+    //
+    // @param  mmContainer  the container to look for evictions.
+    // @param  itr          iterator holding the item
+    //
+    // @return  valid handle to regular item on success. This will be the last
+    //          handle to the item. On failure an empty handle.
+    ItemHandle advanceIteratorAndTryEvictRegularItem3l(PoolId pid, MMContainer& mmContainer,
+                                                     EvictionIterator& itr, bool onPM=false);
 
   // Advance the current iterator and try to evict a chained item
   // Iterator may also be reset during the course of this function
@@ -1572,6 +1585,10 @@ class CacheAllocator : public CacheBase {
   // returns true if nvmcache is enabled and we should write this item.
   bool shouldWriteToNvmCacheExclusive(const Item& item);
 
+    // returns true if nvmcache is enabled and we should write this item to
+    // nvmcache.
+    bool shouldWriteToPM(const Item& item);
+
   // Serialize the metadata for the cache into an IOBUf. The caller can now
   // use this to serialize into a serializer by estimating the size and
   // calling writeToBuffer.
@@ -1628,6 +1645,10 @@ class CacheAllocator : public CacheBase {
   typename Item::PtrCompressor createPtrCompressor() const {
     return allocator_->createPtrCompressor<Item>();
   }
+
+    typename Item::PtrCompressor PMcreatePtrCompressor() const {
+        return PMallocator_->createPtrCompressor<Item>();
+    }
 
   // helper utility to throttle and optionally log.
   static void throttleWith(util::Throttler& t, std::function<void()> fn);
@@ -1730,6 +1751,9 @@ class CacheAllocator : public CacheBase {
   // the memory allocator for allocating out of the available memory.
   std::unique_ptr<MemoryAllocator> allocator_;
 
+    // the memory allocator for allocating out of the available memory.
+    std::unique_ptr<MemoryAllocator> PMallocator_;
+
   // compact cache allocator manager
   std::unique_ptr<CCacheManager> compactCacheManager_;
 
@@ -1745,6 +1769,9 @@ class CacheAllocator : public CacheBase {
 
   // ptr compressor
   typename Item::PtrCompressor compressor_;
+
+    // PM ptr compressor
+    typename Item::PtrCompressor PMcompressor_;
 
   // Lock to synchronize addition of a new pool and its resizing/rebalancing
   folly::SharedMutex poolsResizeAndRebalanceLock_;
@@ -1768,6 +1795,24 @@ class CacheAllocator : public CacheBase {
   // ensure any modification to a chain of chained items are synchronized
   using ChainedItemLock = facebook::cachelib::SharedMutexBuckets;
   ChainedItemLock chainedItemLocks_;
+
+
+
+  // todo:
+  // container for the allocations which are currently being memory managed by
+  // the cache allocator.
+  // we need mmcontainer per allocator pool/allocation class.
+  MMContainers evictablePMContainers_;
+
+  // container for allocations which are unevictable
+  // we need one mm container per pool
+  MMContainers unevictablePMContainers_;
+
+    // container that is used for accessing the allocations by their key.
+    std::unique_ptr<AccessContainer> PMaccessContainer_;
+
+
+
 
   // nvmCache
   std::unique_ptr<NvmCacheT> nvmCache_;

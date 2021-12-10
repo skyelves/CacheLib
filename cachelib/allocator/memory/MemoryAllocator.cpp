@@ -48,6 +48,14 @@ MemoryAllocator::MemoryAllocator(Config config, size_t memSize)
   checkConfig(config_);
 }
 
+MemoryAllocator::MemoryAllocator(Config config, size_t memSize, bool onPM)
+        : config_(std::move(config)),
+          slabAllocator_(memSize,
+                         {config_.disableFullCoredump, config_.lockMemory}, onPM),
+          memoryPoolManager_(slabAllocator_) {
+    checkConfig(config_);
+}
+
 MemoryAllocator::MemoryAllocator(
     const serialization::MemoryAllocatorObject& object,
     void* memoryStart,

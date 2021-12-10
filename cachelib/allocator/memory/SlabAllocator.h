@@ -81,7 +81,10 @@ class SlabAllocator {
   // the object is destroyed.
   SlabAllocator(size_t memorySize, const Config& config);
 
-  // free up and unmap the mmaped memory if the allocator was created with
+    SlabAllocator(size_t memorySize, const Config& config, bool onPM);
+
+
+    // free up and unmap the mmaped memory if the allocator was created with
   // one.
   ~SlabAllocator();
 

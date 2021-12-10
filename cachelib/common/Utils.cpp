@@ -41,6 +41,10 @@ namespace util {
 
 namespace {
 
+
+#define MAP_SYNC 0x080000 /* perform synchronous page faults for the mapping */
+#define MAP_SHARED_VALIDATE 0x03    /* share + validate extension flags */
+
 constexpr size_t kPageSizeBytes = 4096;
 const char* kProcShmMaxPath = "/proc/sys/kernel/shmmax";
 const char* kProcShmAllPath = "/proc/sys/kernel/shmall";

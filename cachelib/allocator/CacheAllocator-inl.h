@@ -33,12 +33,20 @@ CacheAllocator<CacheTrait>::CacheAllocator(Config config)
                                 config_.size)
                           : std::make_unique<MemoryAllocator>(
                                 getAllocatorConfig(config_), config_.size)),
+      PMallocator_(std::make_unique<MemoryAllocator>(
+              getAllocatorConfig(config_), config_.size * 10, true)),
       compactCacheManager_(std::make_unique<CCacheManager>(*allocator_)),
       compressor_(createPtrCompressor()),
+      PMcompressor_(PMcreatePtrCompressor()),
       accessContainer_(std::make_unique<AccessContainer>(
-          config_.accessConfig,
-          compressor_,
-          [this](Item* it) -> ItemHandle { return acquire(it); })),
+              config_.accessConfig,
+              compressor_,
+              [this](Item* it) -> ItemHandle { return acquire(it); })),
+      PMaccessContainer_(std::make_unique<AccessContainer>(
+              config_.accessConfig,
+//              compressor_,
+              PMcompressor_,
+              [this](Item* it) -> ItemHandle { return acquire(it); })),
       chainedItemAccessContainer_(std::make_unique<AccessContainer>(
           config_.chainedItemAccessConfig,
           compressor_,
@@ -60,6 +68,7 @@ CacheAllocator<CacheTrait>::CacheAllocator(SharedMemNewT, Config config)
       allocator_(createNewMemoryAllocator()),
       compactCacheManager_(std::make_unique<CCacheManager>(*allocator_)),
       compressor_(createPtrCompressor()),
+      PMcompressor_(PMcreatePtrCompressor()),
       accessContainer_(std::make_unique<AccessContainer>(
           config_.accessConfig,
           shmManager_
@@ -102,6 +111,7 @@ CacheAllocator<CacheTrait>::CacheAllocator(SharedMemAttachT, Config config)
       allocator_(restoreMemoryAllocator()),
       compactCacheManager_(restoreCCacheManager()),
       compressor_(createPtrCompressor()),
+      PMcompressor_(PMcreatePtrCompressor()),
       evictableMMContainers_(
           deserializeMMContainers(*deserializer_, compressor_)),
       unevictableMMContainers_(
@@ -325,7 +335,7 @@ CacheAllocator<CacheTrait>::allocateInternal(PoolId pid,
 
   void* memory = allocator_->allocate(pid, requiredSize);
   if (memory == nullptr && !config_.disableEviction) {
-    memory = findEviction(pid, cid);
+    memory = findEviction(pid, cid); // todo: first evict to PM, which may trigger further eviction
   }
 
   ItemHandle handle;
@@ -1181,8 +1191,8 @@ bool CacheAllocator<CacheTrait>::moveChainedItem(ChainedItem& oldItem,
 
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::Item*
-CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
-  auto& mmContainer = getEvictableMMContainer(pid, cid);
+CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid, bool onPM) {
+  auto& mmContainer = getEvictableMMContainer(pid, cid, onPM);
 
   // Keep searching for a candidate until we were able to evict it
   // or until the search limit has been exhausted
@@ -1200,7 +1210,7 @@ CacheAllocator<CacheTrait>::findEviction(PoolId pid, ClassId cid) {
     auto toReleaseHandle =
         itr->isChainedItem()
             ? advanceIteratorAndTryEvictChainedItem(itr)
-            : advanceIteratorAndTryEvictRegularItem(mmContainer, itr);
+            : advanceIteratorAndTryEvictRegularItem3l(pid, mmContainer, itr, onPM);
 
     if (toReleaseHandle) {
       if (toReleaseHandle->hasChainedItem()) {
@@ -1294,6 +1304,29 @@ bool CacheAllocator<CacheTrait>::shouldWriteToNvmCacheExclusive(
 }
 
 template <typename CacheTrait>
+bool CacheAllocator<CacheTrait>::shouldWriteToPM(const Item& item) {
+    // write to nvmcache when it is enabled and the item says that it is not
+    // nvmclean or evicted by nvm while present in DRAM.
+    bool doWrite = PMallocator_;
+    if (!doWrite) {
+        return false;
+    }
+
+    doWrite = !item.isExpired();
+    if (!doWrite) {
+//        stats_.numNvmRejectsByExpiry.inc();
+        return false;
+    }
+
+//    doWrite = (!item.isNvmClean() || item.isNvmEvicted());
+//    if (!doWrite) {
+//        stats_.numNvmRejectsByClean.inc();
+//        return false;
+//    }
+    return true;
+}
+
+template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::advanceIteratorAndTryEvictRegularItem(
     MMContainer& mmContainer, EvictionIterator& itr) {
@@ -1357,6 +1390,128 @@ CacheAllocator<CacheTrait>::advanceIteratorAndTryEvictRegularItem(
     nvmCache_->put(evictHandle, std::move(token));
   }
   return evictHandle;
+}
+
+template <typename CacheTrait>
+typename CacheAllocator<CacheTrait>::ItemHandle
+CacheAllocator<CacheTrait>::advanceIteratorAndTryEvictRegularItem3l(PoolId pid,
+        MMContainer& mmContainer, EvictionIterator& itr, bool onPM) {
+    if(onPM){
+        // we should flush this to nvmcache if it is not already present in nvmcache
+        // and the item is not expired.
+        return advanceIteratorAndTryEvictRegularItem(mmContainer, itr);
+    } else {
+        // flush from DRAM to PM if it is not already present in PM
+        // and the item is not expired, which may trigger further evictions
+        Item &item = *itr;
+        const bool evictToPM = shouldWriteToPM(item); // todo: change to evict to PM
+
+//        auto token = evictToPM ? nvmCache_->createPutToken(item.getKey())
+//                                     : typename NvmCacheT::PutToken{};
+//        // record the in-flight eviciton. If not, we move on to next item to avoid
+//        // stalling eviction.
+//        if (evictToPM && !token.isValid()) {
+//            ++itr;
+//            stats_.evictFailConcurrentFill.inc();
+//            return ItemHandle{};
+//        }
+
+        // If there are other accessors, we should abort. Acquire a handle here since
+        // if we remove the item from both access containers and mm containers
+        // below, we will need a handle to ensure proper cleanup in case we end up
+        // not evicting this item
+        auto evictHandle = accessContainer_->removeIf(item, &itemEvictionPredicate);
+
+        if (!evictHandle) {
+            ++itr;
+            stats_.evictFailAC.inc();
+            return evictHandle;
+        }
+
+        mmContainer.remove(itr);
+        XDCHECK_EQ(reinterpret_cast<uintptr_t>(evictHandle.get()),
+                   reinterpret_cast<uintptr_t>(&item));
+        XDCHECK(!evictHandle->isInMMContainer());
+        XDCHECK(!evictHandle->isAccessible());
+
+        // If the item is now marked as moving, that means its corresponding slab is
+        // being released right now. So, we look for the next item that is eligible
+        // for eviction. It is safe to destroy the handle here since the moving bit
+        // is set. Iterator was already advance by the remove call above.
+        if (evictHandle->isMoving()) {
+            stats_.evictFailMove.inc();
+            return ItemHandle{};
+        }
+
+        // Invalidate iterator since later on if we are not evicting this
+        // item, we may need to rely on the handle we created above to ensure
+        // proper cleanup if the item's raw refcount has dropped to 0.
+        // And since this item may be a parent item that has some child items
+        // in this very same mmContainer, we need to make sure we drop this
+        // exclusive iterator so we can gain access to it when we're cleaning
+        // up the child items
+        itr.destroy();
+
+        // Ensure that there are no accessors after removing from the access
+        // container
+        XDCHECK(evictHandle->getRefCount() == 1);
+
+        if (evictToPM) {
+//            XDCHECK(token.isValid());
+//            nvmCache_->put(evictHandle, std::move(token)); // todo: change to put to PM
+            const auto& item = *evictHandle;
+            auto key = item.getKey();
+            auto size = item.getSize();
+            auto creationTime = util::getCurrentTimeSec();
+            auto expiryTime = 0;
+            // number of bytes required for this item
+            const auto requiredSize = Item::getRequiredSize(key, size);
+
+            // the allocation class in our memory allocator.
+            const auto cid = PMallocator_->getAllocationClassId(pid, requiredSize);
+
+            (*stats_.allocAttempts)[pid][cid].inc();
+
+            void* memory = PMallocator_->allocate(pid, requiredSize);
+            if (memory == nullptr && !config_.disableEviction) {
+                memory = findEviction(pid, cid, true);
+            }
+
+            ItemHandle handle;
+            if (memory != nullptr) {
+                // At this point, we have a valid memory allocation that is ready for use.
+                // Ensure that when we abort from here under any circumstances, we free up
+                // the memory. Item's handle could throw because the key size was invalid
+                // for example.
+                SCOPE_FAIL {
+                        // free back the memory to the allocator since we failed.
+                        PMallocator_->free(memory);
+                };
+
+                handle = acquire(new (memory) Item(key, size, creationTime, expiryTime));
+                if (handle) {
+                    handle.markNascent();
+                    (*stats_.fragmentationSize)[pid][cid].add(
+                            util::getFragmentation(*this, *handle));
+                }
+
+            } else { // failed to allocate memory.
+                (*stats_.allocFailures)[pid][cid].inc();
+                // wake up rebalancer
+                if (poolRebalancer_) {
+                    poolRebalancer_->wakeUp();
+                }
+            }
+
+            if (auto eventTracker = getEventTracker()) {
+                const auto result =
+                        handle ? AllocatorApiResult::ALLOCATED : AllocatorApiResult::FAILED;
+                eventTracker->record(AllocatorApiEvent::ALLOCATE, key, result, size,
+                                     expiryTime ? expiryTime - creationTime : 0);
+            }
+        }
+        return evictHandle;
+    }
 }
 
 template <typename CacheTrait>
@@ -1615,10 +1770,16 @@ CacheAllocator<CacheTrait>::getMMContainer(const Item& item) const {
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::MMContainer&
 CacheAllocator<CacheTrait>::getEvictableMMContainer(
-    PoolId pid, ClassId cid) const noexcept {
-  XDCHECK_LT(static_cast<size_t>(pid), evictableMMContainers_.size());
-  XDCHECK_LT(static_cast<size_t>(cid), evictableMMContainers_[pid].size());
-  return *evictableMMContainers_[pid][cid];
+    PoolId pid, ClassId cid, bool onPM) const noexcept {
+    if(onPM){
+        XDCHECK_LT(static_cast<size_t>(pid), evictablePMContainers_.size());
+        XDCHECK_LT(static_cast<size_t>(cid), evictablePMContainers_[pid].size());
+        return *evictablePMContainers_[pid][cid];
+    }else {
+        XDCHECK_LT(static_cast<size_t>(pid), evictableMMContainers_.size());
+        XDCHECK_LT(static_cast<size_t>(cid), evictableMMContainers_[pid].size());
+        return *evictableMMContainers_[pid][cid];
+    }
 }
 
 template <typename CacheTrait>
@@ -1653,8 +1814,8 @@ CacheAllocator<CacheTrait>::inspectCache(typename Item::Key key) {
 template <typename CacheTrait>
 typename CacheAllocator<CacheTrait>::ItemHandle
 CacheAllocator<CacheTrait>::findFastImpl(typename Item::Key key,
-                                         AccessMode mode) {
-  auto handle = findInternal(key);
+                                         AccessMode mode, bool onPM) {
+  auto handle = findInternal(key, onPM);
 
   stats_.numCacheGets.inc();
   if (UNLIKELY(!handle)) {
@@ -1716,8 +1877,45 @@ CacheAllocator<CacheTrait>::find(typename Item::Key key, AccessMode mode) {
 
   auto eventResult = AllocatorApiResult::NOT_FOUND;
 
+
+
+    // todo: add find in PM
+
+    handle = findFastImpl(key, mode, true);
+
+    if (handle) {
+        if (UNLIKELY(handle->isExpired())) {
+            // update cache miss stats if the item has already been expired.
+            stats_.numCacheGetMiss.inc();
+            stats_.numCacheGetExpiries.inc();
+            auto eventTracker = getEventTracker();
+            if (UNLIKELY(eventTracker != nullptr)) {
+                eventTracker->record(AllocatorApiEvent::FIND, key,
+                                     AllocatorApiResult::NOT_FOUND);
+            }
+            ItemHandle ret;
+            ret.markExpired();
+            return ret;
+        }
+
+        // todo: promote to DRAM
+
+        auto eventTracker = getEventTracker();
+        if (UNLIKELY(eventTracker != nullptr)) {
+            eventTracker->record(AllocatorApiEvent::FIND, key,
+                                 AllocatorApiResult::FOUND, handle->getSize(),
+                                 handle->getConfiguredTTL().count());
+        }
+        return handle;
+    }
+
+    eventResult = AllocatorApiResult::NOT_FOUND;
+
+
+
   if (nvmCache_) {
     handle = nvmCache_->find(key);
+    // todo: promote to PM and then DRAM
     eventResult = AllocatorApiResult::NOT_FOUND_IN_MEMORY;
   }
 
